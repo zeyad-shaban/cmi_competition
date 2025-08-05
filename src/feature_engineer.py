@@ -6,12 +6,10 @@ from sklearn.preprocessing import LabelEncoder
 
 
 def load_encoder(encoder_path, df: pd.DataFrame | None = None):
-    if os.path.exists(encoder_path):
-        print("prefitted encoder found...")
+    if df is None:
+        assert os.path.exists(encoder_path), "no prefitted encoder found, please provide DF to create new encoder"
         return joblib.load(encoder_path)
 
-    print("prefitted encoder not found, creating new")
-    assert df is not None, "DataFrame expected as encoder_path doesn't exist"
     encoder = LabelEncoder()
     encoder.fit(df)
     joblib.dump(encoder, encoder_path)
