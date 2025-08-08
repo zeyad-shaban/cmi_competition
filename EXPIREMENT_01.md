@@ -1,3 +1,5 @@
+# Using acc_x, acc_y, acc_z
+
 ## Hypothesis 1: More features = better
 N: Base is acc_x, acc_y, acc_z                  After Normalization
 - mean:                                0.45     0.46
@@ -30,10 +32,6 @@ jerk_mean, jerk_std:                                        0.64
 jerk_mean, jerk_std, jerk_min, jerk_max                     
 
 ! JERK_MIN, JERK_MAX HELPS ALOT TO FIND CLASS NON-TARGET:
-
-
-
-
 
 ## Hypothesis 3.5: combining fft and raw accelorometer = ultimate good
 mean, std, min, max                               0.62
