@@ -111,3 +111,17 @@ macro: 0.43, binary: 0.90, competition: 0.66
 
 with thm_2, thm_4, thm_5 (no tof)
 macro: 0.36, binary: 0.92, competition: 0.64
+
+
+1D convlution across te mporal: macro = 0.39
+1D Convlution across features, that spans all feautres and time at the same time: macro=0.38
+1D Convlution across features that spans 4 features at a time: macro=0.33
+! Result: A NETWORK MUST SEE ALL FEATURES AT THE SAME TIME
+
+2D convlutions had the exact same score as a 1D convolutoin across temporal, well obvious as they both span the same data
+
+Best performing: a conv1d(12 features -> 64, k=5, s=5) # i didnt' tweak is tth eparameters alot
+macro = 0.39
+
+Adding thm_2, 4, 5 readings: macro = 45%
+adding tof_1_v20 readings: macro=47%
