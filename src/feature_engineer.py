@@ -19,46 +19,6 @@ def load_encoder(encoder_path, df: pd.DataFrame | None = None):
     return encoder
 
 
-def process_data(sequence: pd.DataFrame, demographics: pd.DataFrame, encoder: LabelEncoder):
-    # preprocess
-    full_df = pd.merge(
-        left=sequence,
-        right=demographics,
-        on="subject",
-        how="left",
-    )
-
-    non_target_gestures = full_df[full_df["sequence_type"] == "Non-Target"]["gesture"].unique()
-    target_gestures = full_df[full_df["sequence_type"] == "Target"]["gesture"].unique()
-
-    filtered_df = full_df[full_df["phase"] == "Gesture"]
-    filtered_df.loc[filtered_df["sequence_type"] == "Non-Target", "gesture"] = non_target_gestures[0]
-    agg_recipe = {
-        "gesture": ["first"],
-        "subject": ["first"],
-        "acc_x": ["mean", "std"],
-        "acc_y": ["mean", "std"],
-        "acc_z": ["mean", "std"],
-    }
-
-    filtered_df = filtered_df.groupby("sequence_id")[list(agg_recipe.keys())].agg(agg_recipe)  # type: ignore
-    filtered_df.columns = ["_".join(col).strip() if col[1] else col[0] for col in filtered_df.columns.values]
-    filtered_df = filtered_df.rename(
-        columns={
-            "gesture_first": "target",
-            "subject_first": "subject",
-        }
-    )
-
-    # encoder
-    target_df = filtered_df["target"]
-
-    target_tensor = torch.tensor(encoder.transform(target_df), dtype=torch.long)
-    features_tensor = torch.tensor(filtered_df.drop(columns=["target", "subject"]).to_numpy(), dtype=torch.float32)
-    target_gestures_encoded = torch.tensor(encoder.transform(target_gestures))
-
-    return features_tensor, target_tensor
-    
 def rotation_feature_engineer(df: pd.DataFrame):
     quat = df[["rot_w", "rot_x", "rot_y", "rot_z"]]
     rotation_object = Rotation.from_quat(quat)
