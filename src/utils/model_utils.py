@@ -42,27 +42,31 @@ def evaulate_model(y_pred, y_true, target_gestures_encoded, encoder: LabelEncode
     }
 
 
-def predict_in_chunks(model, X, device, batch_size=10):
-    model.eval()
+def predict_in_chunks(model, X, device, batch_size):
     preds_list = []
+    model.eval()
     with torch.no_grad():
         for i in range(0, len(X), batch_size):
-            batch = resize_spectrograms_torch(X[i : i + batch_size]).to(device)
+            batch = resize_spectrograms_torch(X[i : i + batch_size])
+            batch = batch.to(device, non_blocking=True)
             preds = torch.argmax(model(batch), dim=1).cpu()
             preds_list.append(preds)
+            del batch  # free right after use
+            torch.cuda.empty_cache()
     return torch.cat(preds_list)
 
 
-def extract_features_in_chunks(model, X, device, batch_size=10):
-    model = model.to(device)
+def extract_features_in_chunks(model, X, device, batch_size=1024):
     model.eval()
     features_list = []
     with torch.no_grad():
         for i in range(0, len(X), batch_size):
             batch = resize_spectrograms_torch(X[i : i + batch_size]).to(device)
-            feats = model(batch).view(batch.shape[0], -1).cpu()
+            feats = model(batch).view(batch.size(0), -1).cpu()
             features_list.append(feats)
-    return torch.cat(features_list)
+            del batch, feats
+            torch.cuda.empty_cache()
+    return torch.cat(features_list, dim=0).numpy()
 
 
 def train_model(model: nn.Module, dataloader: DataLoader, n_epochs: int, should_log=True, spectogram_features=False, specto_size=(224, 224)):
