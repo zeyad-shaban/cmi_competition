@@ -6,14 +6,21 @@ import pandas as pd
 from torch.utils.data import DataLoader
 import numpy as np
 
+if __name__ == "__main__":
+    from .math_utils import resize_spectrograms_torch
+else:
+    from src.utils.math_utils import resize_spectrograms_torch
+
+
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def evaulate_model(y_pred, y_true, target_gestures_encoded, encoder: LabelEncoder):
     if isinstance(y_pred, torch.Tensor):
-        y_pred = y_pred.cpu().numpy()
+        y_pred = y_pred.detach().cpu().numpy()
     if isinstance(y_true, torch.Tensor):
-        y_true = y_true.cpu().numpy()
+        y_true = y_true.detach().cpu().numpy()
     if isinstance(target_gestures_encoded, torch.Tensor):
         target_gestures_encoded = target_gestures_encoded.cpu().numpy()
 
@@ -36,7 +43,7 @@ def evaulate_model(y_pred, y_true, target_gestures_encoded, encoder: LabelEncode
     }
 
 
-def train_model(model: nn.Module, dataloader: DataLoader, n_epochs: int, should_log=True):
+def train_model(model: nn.Module, dataloader: DataLoader, n_epochs: int, should_log=True, spectogram_features=False):
     opt = torch.optim.Adam(model.parameters(), lr=5e-3)
     criterion = nn.CrossEntropyLoss()
     model.train()
@@ -47,6 +54,10 @@ def train_model(model: nn.Module, dataloader: DataLoader, n_epochs: int, should_
         for x, y in dataloader:
             x = x.to(device)
             y = y.to(device)
+
+            if spectogram_features:
+                x = resize_spectrograms_torch(x)
+            
 
             y_pred = model(x)
             loss = criterion(y_pred, y)
@@ -62,17 +73,15 @@ def train_model(model: nn.Module, dataloader: DataLoader, n_epochs: int, should_
 
 
 if __name__ == "__main__":
-
+    from torch.utils.data import TensorDataset, DataLoader
+    
     class SimpleModel(nn.Module):
         def __init__(self, n_classes):
             super().__init__()
 
             self.fc = nn.Sequential(
-                nn.Linear(6, 100),
-                nn.ReLU(),
-                nn.Linear(100, 50),
-                nn.ReLU(),
-                nn.Linear(50, n_classes),
+                nn.Flatten(),
+                nn.Linear(17 * 224 * 224, n_classes),
             )
 
         def forward(self, x: torch.Tensor):
@@ -81,16 +90,20 @@ if __name__ == "__main__":
             return y_pred
 
     n_classes = 6
-    dummy_features = torch.randn((64, n_classes), dtype=torch.float32)
+    dummy_features = torch.randn((64, 17, 9, 9), dtype=torch.float32)
     dummy_target = torch.randint(0, n_classes, (64,), dtype=torch.long)
     dummy_encoder = LabelEncoder()
 
+    # encoding
     dummy_encoder.fit(dummy_target.numpy())
     target_gestures_encoded = torch.arange(0, n_classes)
     print(target_gestures_encoded)
 
+    # training
     model = SimpleModel(n_classes)
-
-    y_pred = torch.argmax(model(dummy_features), dim=1)
-
+    dataloader = DataLoader(TensorDataset(dummy_features, dummy_target), batch_size=16, shuffle=True)
+    train_model(model, dataloader, n_epochs=2, spectogram_features=True)
+    
+    # evaluating
+    y_pred = model(resize_spectrograms_torch(resize_spectrograms_torch(dummy_features))).argmax(dim=1)
     print(evaulate_model(y_pred, dummy_target, target_gestures_encoded, dummy_encoder))
