@@ -3,22 +3,28 @@ from sklearn.metrics import f1_score, confusion_matrix, classification_report
 from sklearn.preprocessing import LabelEncoder
 import torch
 import pandas as pd
-from torch.utils.data import DataLoader 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+from torch.utils.data import DataLoader
+import numpy as np
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def evaulate_model(model: nn.Module, X_test: torch.Tensor, y_test, target_gestures_encoded: torch.Tensor, encoder: LabelEncoder):
-    model.eval()  # not sure if it's best practice to have this here or expect the model to come in eval mode
-    y_pred = torch.argmax(model(X_test), dim=1)
+def evaulate_model(y_pred, y_true, target_gestures_encoded, encoder: LabelEncoder):
+    if isinstance(y_pred, torch.Tensor):
+        y_pred = y_pred.cpu().numpy()
+    if isinstance(y_true, torch.Tensor):
+        y_true = y_true.cpu().numpy()
+    if isinstance(target_gestures_encoded, torch.Tensor):
+        target_gestures_encoded = target_gestures_encoded.cpu().numpy()
 
-    conf_matrix_result = confusion_matrix(y_test, y_pred)
-    clsf_report_result = pd.DataFrame(classification_report(y_test, y_pred, target_names=encoder.classes_, output_dict=True, zero_division=0)).T
+    conf_matrix_result = confusion_matrix(y_true, y_pred)
+    clsf_report_result = pd.DataFrame(classification_report(y_true, y_pred, target_names=encoder.classes_, output_dict=True, zero_division=0)).T
 
-    y_test_binary = torch.isin(y_test, target_gestures_encoded)
-    y_pred_binary = torch.isin(y_pred, target_gestures_encoded)
-    f1_binary = f1_score(y_test_binary, y_pred_binary, average="binary")
+    y_true_binary = np.isin(y_true, target_gestures_encoded)
+    y_pred_binary = np.isin(y_pred, target_gestures_encoded)
+    f1_binary = f1_score(y_true_binary, y_pred_binary, average="binary", zero_division=0)
 
-    f1_macro = f1_score(y_test, y_pred, average="macro")
+    f1_macro = f1_score(y_true, y_pred, average="macro", zero_division=0)
     competition_evaluation = 0.5 * f1_binary + 0.5 * f1_macro
 
     return {
@@ -29,8 +35,9 @@ def evaulate_model(model: nn.Module, X_test: torch.Tensor, y_test, target_gestur
         "competition_evaluation": competition_evaluation,
     }
 
+
 def train_model(model: nn.Module, dataloader: DataLoader, n_epochs: int, should_log=True):
-    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+    opt = torch.optim.Adam(model.parameters(), lr=5e-3)
     criterion = nn.CrossEntropyLoss()
     model.train()
 
@@ -54,17 +61,36 @@ def train_model(model: nn.Module, dataloader: DataLoader, n_epochs: int, should_
             print(f"{epoch} - loss_avg: {loss_avg}")
 
 
-if __name__ == '__main__':
-    from model import SimpleModel
+if __name__ == "__main__":
+
+    class SimpleModel(nn.Module):
+        def __init__(self, n_classes):
+            super().__init__()
+
+            self.fc = nn.Sequential(
+                nn.Linear(6, 100),
+                nn.ReLU(),
+                nn.Linear(100, 50),
+                nn.ReLU(),
+                nn.Linear(50, n_classes),
+            )
+
+        def forward(self, x: torch.Tensor):
+            y_pred = self.fc(x)
+
+            return y_pred
+
     n_classes = 6
     dummy_features = torch.randn((64, n_classes), dtype=torch.float32)
     dummy_target = torch.randint(0, n_classes, (64,), dtype=torch.long)
     dummy_encoder = LabelEncoder()
-    
+
     dummy_encoder.fit(dummy_target.numpy())
     target_gestures_encoded = torch.arange(0, n_classes)
     print(target_gestures_encoded)
-    
+
     model = SimpleModel(n_classes)
-    
-    print(evaulate_model(model, dummy_features, dummy_target, target_gestures_encoded, dummy_encoder))
+
+    y_pred = torch.argmax(model(dummy_features), dim=1)
+
+    print(evaulate_model(y_pred, dummy_target, target_gestures_encoded, dummy_encoder))

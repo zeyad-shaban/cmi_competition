@@ -125,3 +125,6 @@ macro = 0.39
 
 Adding thm_2, 4, 5 readings: macro = 45%
 adding tof_1_v20 readings: macro=47%
+
+after some tweaks the best i got with cnn
+only IMU is macro=42.6%
