@@ -7,10 +7,9 @@ from torch.utils.data import DataLoader
 import numpy as np
 
 if __name__ == "__main__":
-    from .math_utils import resize_spectrograms_torch
+    from math_utils import resize_spectrograms_torch
 else:
     from src.utils.math_utils import resize_spectrograms_torch
-
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -43,6 +42,17 @@ def evaulate_model(y_pred, y_true, target_gestures_encoded, encoder: LabelEncode
     }
 
 
+def predict_in_chunks(model, X, device, batch_size=10):
+    model.eval()
+    preds_list = []
+    with torch.no_grad():
+        for i in range(0, len(X), batch_size):
+            batch = resize_spectrograms_torch(X[i : i + batch_size]).to(device)
+            preds = torch.argmax(model(batch), dim=1).cpu()
+            preds_list.append(preds)
+    return torch.cat(preds_list)
+
+
 def train_model(model: nn.Module, dataloader: DataLoader, n_epochs: int, should_log=True, spectogram_features=False):
     opt = torch.optim.Adam(model.parameters(), lr=5e-3)
     criterion = nn.CrossEntropyLoss()
@@ -57,7 +67,6 @@ def train_model(model: nn.Module, dataloader: DataLoader, n_epochs: int, should_
 
             if spectogram_features:
                 x = resize_spectrograms_torch(x)
-            
 
             y_pred = model(x)
             loss = criterion(y_pred, y)
@@ -74,7 +83,7 @@ def train_model(model: nn.Module, dataloader: DataLoader, n_epochs: int, should_
 
 if __name__ == "__main__":
     from torch.utils.data import TensorDataset, DataLoader
-    
+
     class SimpleModel(nn.Module):
         def __init__(self, n_classes):
             super().__init__()
@@ -103,7 +112,7 @@ if __name__ == "__main__":
     model = SimpleModel(n_classes)
     dataloader = DataLoader(TensorDataset(dummy_features, dummy_target), batch_size=16, shuffle=True)
     train_model(model, dataloader, n_epochs=2, spectogram_features=True)
-    
+
     # evaluating
     y_pred = model(resize_spectrograms_torch(resize_spectrograms_torch(dummy_features))).argmax(dim=1)
     print(evaulate_model(y_pred, dummy_target, target_gestures_encoded, dummy_encoder))
