@@ -54,6 +54,7 @@ def predict_in_chunks(model, X, device, batch_size=10):
 
 
 def extract_features_in_chunks(model, X, device, batch_size=10):
+    model = model.to(device)
     model.eval()
     features_list = []
     with torch.no_grad():
