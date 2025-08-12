@@ -53,7 +53,18 @@ def predict_in_chunks(model, X, device, batch_size=10):
     return torch.cat(preds_list)
 
 
-def train_model(model: nn.Module, dataloader: DataLoader, n_epochs: int, should_log=True, spectogram_features=False):
+def extract_features_in_chunks(model, X, device, batch_size=10):
+    model.eval()
+    features_list = []
+    with torch.no_grad():
+        for i in range(0, len(X), batch_size):
+            batch = resize_spectrograms_torch(X[i : i + batch_size]).to(device)
+            feats = model(batch).view(batch.shape[0], -1).cpu()
+            features_list.append(feats)
+    return torch.cat(features_list)
+
+
+def train_model(model: nn.Module, dataloader: DataLoader, n_epochs: int, should_log=True, spectogram_features=False, specto_size=(224, 224)):
     opt = torch.optim.Adam(model.parameters(), lr=5e-3)
     criterion = nn.CrossEntropyLoss()
     model.train()
@@ -66,7 +77,7 @@ def train_model(model: nn.Module, dataloader: DataLoader, n_epochs: int, should_
             y = y.to(device)
 
             if spectogram_features:
-                x = resize_spectrograms_torch(x)
+                x = resize_spectrograms_torch(x, specto_size)
 
             y_pred = model(x)
             loss = criterion(y_pred, y)
