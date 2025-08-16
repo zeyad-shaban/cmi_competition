@@ -4,6 +4,7 @@ import librosa
 import torch
 import torchvision.transforms as transforms
 import torch.nn.functional as F
+from scipy.spatial.transform import Rotation
 
 
 def get_fft_power(signal: pd.Series):
@@ -62,6 +63,37 @@ def resize_spectrograms_torch(specs: torch.Tensor, target_size=(224, 224)) -> to
         resized = F.interpolate(specs, size=target_size, mode="bilinear", align_corners=False)
     return resized
 
+def remove_gravity(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculates linear acceleration by removing the gravity component from the raw
+    accelerometer data using the device's orientation.
+
+    Args:
+        df (pd.DataFrame): The time-step level DataFrame which must include
+                           'acc_x', 'acc_y', 'acc_z', and the quaternion columns
+                           'rot_w', 'rot_x', 'rot_y', 'rot_z'.
+
+    Returns:
+        pd.DataFrame: The original DataFrame with new columns for linear
+                      acceleration ('linear_acc_x', 'linear_acc_y', 'linear_acc_z',
+                      'linear_acc_mag').
+    """
+    gravity = np.array([0, 0, -9.81])
+    quat = df[["rot_w", "rot_x", "rot_y", "rot_z"]].to_numpy()
+    accel = df[["acc_x", "acc_y", "acc_z"]].to_numpy()
+
+    rotations = Rotation.from_quat(quat)
+    world_accel = rotations.apply(accel, inverse=True)
+    linear_accelerations_world = world_accel - gravity
+
+    linear_accelerations_device = rotations.apply(linear_accelerations_world)
+
+    # 5. Add the new features back to the DataFrame
+    df["acc_x"] = linear_accelerations_device[:, 0]
+    df["acc_y"] = linear_accelerations_device[:, 1]
+    df["acc_z"] = linear_accelerations_device[:, 2]
+
+    return df
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt

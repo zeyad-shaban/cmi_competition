@@ -55,13 +55,14 @@ def clean_df(df: pd.DataFrame, drop_rot_na=True, drop_thm_na=True, min_gesture_c
     min_gesture_count = 28, max_gesture_count = 35 was the current best performing
     put as -1 to not do it
     """
+    df = df.copy()
     non_target_gestures = df[df["sequence_type"] == "Non-Target"]["gesture"].unique()
     target_gestures = df[df["sequence_type"] == "Target"]["gesture"].unique()
 
     filtered_df = df[df["phase"] == "Gesture"]
     filtered_df.loc[filtered_df["sequence_type"] == "Non-Target", "gesture"] = non_target_gestures[0]
 
-    curr_len = len(df)
+    curr_len = len(filtered_df)
     if drop_rot_na:
         # drop na rotation
         bad_seq_id = df[df["rot_w"].isnull()]["sequence_id"].unique()
