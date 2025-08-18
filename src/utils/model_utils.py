@@ -5,8 +5,45 @@ import torch
 import pandas as pd
 from torch.utils.data import DataLoader
 import numpy as np
+import torch.nn.functional as F
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+class SoftF1Loss(nn.Module):
+    """
+    Differentiable approximation of 1 - F1_macro for multi-class classification.
+    """
+
+    def __init__(self, eps=1e-7):
+        super().__init__()
+        self.eps = eps
+
+    def forward(self, y_pred, y_true):
+        """
+        y_pred: logits, shape (batch_size, num_classes)
+        y_true: class indices, shape (batch_size,)
+        """
+        # Convert logits to probabilities
+        y_pred = F.softmax(y_pred, dim=1)
+
+        # # One-hot encode targets
+        # y_true = F.one_hot(y_true, num_classes=y_pred.size(1)).float()
+
+        # Compute soft counts per class
+        tp = torch.sum(y_pred * y_true, dim=0)
+        fp = torch.sum(y_pred * (1 - y_true), dim=0)
+        fn = torch.sum((1 - y_pred) * y_true, dim=0)
+
+        precision = tp / (tp + fp + self.eps)
+        recall = tp / (tp + fn + self.eps)
+
+        f1 = 2 * precision * recall / (precision + recall + self.eps)
+
+        # Macro average across classes
+        f1_macro = f1.mean()
+
+        return 1 - f1_macro  # we minimize, so return 1 - F1
 
 
 def normalize_tensor(X: torch.Tensor | np.ndarray) -> torch.Tensor:
@@ -21,7 +58,7 @@ def normalize_tensor(X: torch.Tensor | np.ndarray) -> torch.Tensor:
     return X
 
 
-def evaulate_model(y_pred, y_true, target_gestures_encoded, encoder: LabelEncoder):
+def evaluate_model(y_pred, y_true, target_gestures_encoded, encoder: LabelEncoder):
     if isinstance(y_pred, torch.Tensor):
         y_pred = y_pred.detach().cpu().numpy()
     if isinstance(y_true, torch.Tensor):
@@ -70,6 +107,7 @@ def evaulate_model(y_pred, y_true, target_gestures_encoded, encoder: LabelEncode
         "competition_evaluation": competition_evaluation,
     }
 
+
 def evaluate_fold(model, X, y, target_gestures_encoded, encoder, feature_mask=None):
     """Helper to evaluate model on data with optional feature masking"""
     if feature_mask is not None:
@@ -78,12 +116,13 @@ def evaluate_fold(model, X, y, target_gestures_encoded, encoder, feature_mask=No
         y_pred = torch.argmax(model(X_masked.to(device)), dim=1)
     else:
         y_pred = torch.argmax(model(X.to(device)), dim=1)
-    
-    return evaulate_model(y_pred.to(device), y.to(device), target_gestures_encoded, encoder)
+
+    return evaluate_model(y_pred.to(device), y.to(device), target_gestures_encoded, encoder)
+
 
 def store_results(results_dict, score_dashboard):
     """Helper to store evaluation results"""
-    for key in ['f1_macro', 'f1_binary', 'competition_evaluation', 'confusion_matrix']:
+    for key in ["f1_macro", "f1_binary", "competition_evaluation", "confusion_matrix"]:
         if key not in results_dict:
             results_dict[key] = []
         results_dict[key].append(score_dashboard[key])
@@ -158,4 +197,4 @@ if __name__ == "__main__":
     y = torch.tensor([1, 2, 3, 4, 5])
     encoder = LabelEncoder().fit(y)
 
-    print(evaulate_model(y_pred, y, [1, 2, 3], encoder))
+    print(evaluate_model(y_pred, y, [1, 2, 3], encoder))
