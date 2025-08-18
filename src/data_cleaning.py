@@ -1,5 +1,6 @@
 import pandas as pd
-
+import numpy as np
+from scipy.spatial.transform import Rotation as R
 
 # Clean DataFrame
 def get_counts(df) -> pd.DataFrame:
@@ -10,6 +11,43 @@ def log_dropped(len_before, len_after, description):
     dropped = len_before - len_after
     perc_dropped = (dropped / len_before) * 100
     print(f"[{description}] Remaining: {len_after}/{len_before} " f"(-{dropped}, {perc_dropped:.1f}% dropped)")
+
+def remove_gravity(df: pd.DataFrame, quat_cols=("rot_x", "rot_y", "rot_z", "rot_w"), acc_cols=("acc_x", "acc_y", "acc_z"), gravity_mag=9.81):
+    """Return a copy with added linear_acc_x/y/z and linear_acc_mag.
+    Writes only to rows with valid quaternion; invalid rows keep original accel.
+    Expects quat order (x,y,z,w).
+    """
+    df = df.copy()
+
+    quat_df = df[list(quat_cols)]
+    # valid if no NaNs and not all zeros (tolerance for floating)
+    valid_mask = (~quat_df.isnull().any(axis=1)) & (~np.isclose(quat_df.values, 0).all(axis=1))
+    valid_idx = df.index[valid_mask]
+
+    # By default keep original accel values for invalid rows
+    df["linear_acc_x"] = df[acc_cols[0]].astype(float)
+    df["linear_acc_y"] = df[acc_cols[1]].astype(float)
+    df["linear_acc_z"] = df[acc_cols[2]].astype(float)
+
+    if len(valid_idx) > 0:
+        quat_vals = quat_df.loc[valid_idx].to_numpy(dtype=float)  # shape M x 4 (x,y,z,w)
+        accel_vals = df.loc[valid_idx, list(acc_cols)].to_numpy(dtype=float)  # shape M x 3
+
+        rotations = R.from_quat(quat_vals)  # expects [x,y,z,w]
+        accel_world = rotations.apply(accel_vals, inverse=True)  # sensor -> world
+
+        gravity = np.array([0.0, 0.0, gravity_mag], dtype=float)
+        linear_world = accel_world - gravity  # linear accel in world frame
+
+        # write results back only to valid rows
+        df.loc[valid_idx, "linear_acc_x"] = linear_world[:, 0]
+        df.loc[valid_idx, "linear_acc_y"] = linear_world[:, 1]
+        df.loc[valid_idx, "linear_acc_z"] = linear_world[:, 2]
+
+    df["linear_acc_mag"] = np.linalg.norm(df[["linear_acc_x", "linear_acc_y", "linear_acc_z"]].to_numpy(), axis=1)
+    return df
+
+
 
 
 def normalize_sequence_count(df: pd.DataFrame, group_col: str = "sequence_id", seq_counter_col: str = "sequence_counter") -> pd.DataFrame:
@@ -40,35 +78,32 @@ def normalize_sequence_count(df: pd.DataFrame, group_col: str = "sequence_id", s
     return pd.concat(out_groups, ignore_index=True)
 
 
-def clean_df(df: pd.DataFrame, drop_rot_na=True, drop_thm_na=True, min_gesture_count=28, max_gesture_count=35):
+def clean_df(df: pd.DataFrame, drop_rot_na=False, drop_thm_na=False, min_gesture_count=26, max_gesture_count=38):
     """
     min_gesture_count = 28, max_gesture_count = 35 was the current best performing
     put as -1 to not do it
     """
     df = df.copy()
-    df = df.ffill().bfill().fillna(0)
-    non_target_gestures = df[df["sequence_type"] == "Non-Target"]["gesture"].unique()
     target_gestures = df[df["sequence_type"] == "Target"]["gesture"].unique()
 
     filtered_df = df[df["phase"] == "Gesture"]
-    filtered_df.loc[filtered_df["sequence_type"] == "Non-Target", "gesture"] = non_target_gestures[0]
-    print(f'yo wtf {filtered_df['gesture'].unique()}')
 
     curr_len = len(filtered_df)
     if drop_rot_na:
         # drop na rotation
-        bad_seq_id = df[df["rot_w"].isnull()]["sequence_id"].unique()
+        bad_seq_id = filtered_df[filtered_df["rot_w"].isnull()]["sequence_id"].unique()
         bad_seq_mask = filtered_df["sequence_id"].isin(bad_seq_id)
         filtered_df = filtered_df[~bad_seq_mask]
-
+        
         log_dropped(curr_len, len(filtered_df), "rot_na")
         curr_len = len(filtered_df)
 
     if drop_thm_na:
         for i in range(1, 6):
-            bad_seq_id = df[df[f"thm_{i}"].isnull()]["sequence_id"].unique()
+            bad_seq_id = filtered_df[filtered_df[f"thm_{i}"].isnull()]["sequence_id"].unique()
             bad_seq_mask = filtered_df["sequence_id"].isin(bad_seq_id)
             filtered_df = filtered_df[~bad_seq_mask]
+
 
         log_dropped(curr_len, len(filtered_df), "thm_na")
         curr_len = len(filtered_df)
@@ -80,9 +115,14 @@ def clean_df(df: pd.DataFrame, drop_rot_na=True, drop_thm_na=True, min_gesture_c
         valid_idx = gesture_counts[valid_mask].index
         filtered_df = filtered_df[filtered_df["sequence_id"].isin(valid_idx)]
 
+
         log_dropped(curr_len, len(filtered_df), "gesture_len outliers")
         curr_len = len(filtered_df)
-
+    
+    filtered_df = filtered_df.ffill().bfill().fillna(0)
+    filtered_df = remove_gravity(filtered_df)
+    filtered_df = normalize_sequence_count(df)
+    
     return filtered_df, target_gestures
 
 

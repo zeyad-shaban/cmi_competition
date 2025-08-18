@@ -4,8 +4,14 @@ import torch
 import joblib
 import os
 from sklearn.preprocessing import LabelEncoder
-from src.utils.math_utils import get_fft_power
-from scipy.spatial.transform import Rotation
+from scipy.spatial.transform import Rotation as R
+
+
+def get_fft_power(signal: pd.Series):
+    fft = np.fft.fft(signal)
+    power = np.abs(fft) ** 2
+    power = power / 2
+    return power
 
 
 def load_encoder(encoder_path, df: pd.DataFrame | None = None):
@@ -26,7 +32,7 @@ def rotation_feature_engineer(df: pd.DataFrame):
     num_samples = quat_arr.shape[0]
     angular_vel = np.zeros([num_samples, 3])
 
-    rotation_object = Rotation.from_quat(quat_arr)
+    rotation_object = R.from_quat(quat_arr)
     rotation_vectors = rotation_object.as_rotvec()
 
     df["rotvec_x"] = rotation_vectors[:, 0]
@@ -41,8 +47,8 @@ def rotation_feature_engineer(df: pd.DataFrame):
         q_current = quat_arr[:-1]  # t0 to t_{n-2}
         q_next = quat_arr[1:]  # t1 to t_{n-1}
 
-        rot_curr = Rotation.from_quat(q_current)
-        rot_next = Rotation.from_quat(q_next)
+        rot_curr = R.from_quat(q_current)
+        rot_next = R.from_quat(q_next)
         delta_rot = rot_curr.inv() * rot_next
 
         angular_vel[1:] = delta_rot.as_rotvec() / dt

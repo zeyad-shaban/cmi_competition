@@ -6,16 +6,10 @@ import pandas as pd
 from torch.utils.data import DataLoader
 import numpy as np
 
-if __name__ == "__main__":
-    from math_utils import resize_spectrograms_torch
-else:
-    from src.utils.math_utils import resize_spectrograms_torch
-
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def evaluate_model(y_pred, y_true, target_gestures_encoded, encoder: LabelEncoder):
+def evaulate_model(y_pred, y_true, target_gestures_encoded, encoder: LabelEncoder):
     if isinstance(y_pred, torch.Tensor):
         y_pred = y_pred.detach().cpu().numpy()
     if isinstance(y_true, torch.Tensor):
@@ -63,33 +57,6 @@ def evaluate_model(y_pred, y_true, target_gestures_encoded, encoder: LabelEncode
         "f1_macro": f1_macro,
         "competition_evaluation": competition_evaluation,
     }
-
-
-def predict_in_chunks(model, X, device, batch_size):
-    preds_list = []
-    model.eval()
-    with torch.no_grad():
-        for i in range(0, len(X), batch_size):
-            batch = resize_spectrograms_torch(X[i : i + batch_size])
-            batch = batch.to(device, non_blocking=True)
-            preds = torch.argmax(model(batch), dim=1).cpu()
-            preds_list.append(preds)
-            del batch  # free right after use
-            torch.cuda.empty_cache()
-    return torch.cat(preds_list)
-
-
-def extract_features_in_chunks(model, X, device, batch_size=1024):
-    model.eval()
-    features_list = []
-    with torch.no_grad():
-        for i in range(0, len(X), batch_size):
-            batch = resize_spectrograms_torch(X[i : i + batch_size]).to(device)
-            feats = model(batch).view(batch.size(0), -1).cpu()
-            features_list.append(feats)
-            del batch, feats
-            torch.cuda.empty_cache()
-    return torch.cat(features_list, dim=0).numpy()
 
 
 def train_model(model: nn.Module, dataloader: DataLoader, n_epochs: int, should_log=True, mixup_alpha=0.4, lr=5e-3, weight_decay=3e-3, n_classes=9):
@@ -171,8 +138,9 @@ if __name__ == "__main__":
     # training
     model = SimpleModel(n_classes)
     dataloader = DataLoader(TensorDataset(dummy_features, dummy_target), batch_size=16, shuffle=True)
-    train_model(model, dataloader, n_epochs=2, spectogram_features=True)
 
-    # evaluating
-    y_pred = model(resize_spectrograms_torch(resize_spectrograms_torch(dummy_features))).argmax(dim=1)
-    print(evaluate_model(y_pred, dummy_target, target_gestures_encoded, dummy_encoder))
+    y_pred = torch.tensor([1, 2, 3, 4, 5])
+    y = torch.tensor([1, 2, 3, 4, 5])
+    encoder = LabelEncoder().fit(y)
+
+    print(evaulate_model(y_pred, y, [1, 2, 3], encoder))
