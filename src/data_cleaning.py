@@ -26,11 +26,6 @@ def normalize_sequence_count(df: pd.DataFrame, group_col: str = "sequence_id", s
         group_count = g[seq_counter_col].max() - g[seq_counter_col].min() + 1
         needed = max_count - group_count
 
-        # Those had no impact on the results, will look at them later
-        # broadcast the group length to existing rows
-        # g["gesture_counter_length"] = group_count
-        # g["is_original"] = 1
-
         if needed > 0:
             last = g.iloc[-1].copy()
             repeats = pd.DataFrame([last] * needed)
@@ -39,14 +34,9 @@ def normalize_sequence_count(df: pd.DataFrame, group_col: str = "sequence_id", s
             start = int(last[seq_counter_col])
             repeats[seq_counter_col] = range(start + 1, start + 1 + needed)
 
-            # ensure the appended rows also carry the same group length
-            # repeats["gesture_counter_length"] = group_count
-            # repeats["is_original"] = 0
-
             g = pd.concat([g, repeats], ignore_index=True)
 
         out_groups.append(g)
-
     return pd.concat(out_groups, ignore_index=True)
 
 
@@ -56,11 +46,13 @@ def clean_df(df: pd.DataFrame, drop_rot_na=True, drop_thm_na=True, min_gesture_c
     put as -1 to not do it
     """
     df = df.copy()
+    df = df.ffill().bfill().fillna(0)
     non_target_gestures = df[df["sequence_type"] == "Non-Target"]["gesture"].unique()
     target_gestures = df[df["sequence_type"] == "Target"]["gesture"].unique()
 
     filtered_df = df[df["phase"] == "Gesture"]
     filtered_df.loc[filtered_df["sequence_type"] == "Non-Target", "gesture"] = non_target_gestures[0]
+    print(f'yo wtf {filtered_df['gesture'].unique()}')
 
     curr_len = len(filtered_df)
     if drop_rot_na:
@@ -68,7 +60,7 @@ def clean_df(df: pd.DataFrame, drop_rot_na=True, drop_thm_na=True, min_gesture_c
         bad_seq_id = df[df["rot_w"].isnull()]["sequence_id"].unique()
         bad_seq_mask = filtered_df["sequence_id"].isin(bad_seq_id)
         filtered_df = filtered_df[~bad_seq_mask]
-        
+
         log_dropped(curr_len, len(filtered_df), "rot_na")
         curr_len = len(filtered_df)
 
@@ -77,7 +69,6 @@ def clean_df(df: pd.DataFrame, drop_rot_na=True, drop_thm_na=True, min_gesture_c
             bad_seq_id = df[df[f"thm_{i}"].isnull()]["sequence_id"].unique()
             bad_seq_mask = filtered_df["sequence_id"].isin(bad_seq_id)
             filtered_df = filtered_df[~bad_seq_mask]
-
 
         log_dropped(curr_len, len(filtered_df), "thm_na")
         curr_len = len(filtered_df)
@@ -88,7 +79,6 @@ def clean_df(df: pd.DataFrame, drop_rot_na=True, drop_thm_na=True, min_gesture_c
         valid_mask = (gesture_counts >= min_gesture_count) & (gesture_counts <= max_gesture_count)
         valid_idx = gesture_counts[valid_mask].index
         filtered_df = filtered_df[filtered_df["sequence_id"].isin(valid_idx)]
-
 
         log_dropped(curr_len, len(filtered_df), "gesture_len outliers")
         curr_len = len(filtered_df)
