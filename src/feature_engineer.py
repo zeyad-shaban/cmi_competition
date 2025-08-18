@@ -27,7 +27,6 @@ def load_encoder(encoder_path, df: pd.DataFrame | None = None):
 
 # Feature Engineer
 def rotation_feature_engineer(df: pd.DataFrame):
-    df = df.copy()
     quat_arr = df[["rot_x", "rot_y", "rot_z", "rot_w"]].values
     num_samples = quat_arr.shape[0]
     angular_vel = np.zeros([num_samples, 3])

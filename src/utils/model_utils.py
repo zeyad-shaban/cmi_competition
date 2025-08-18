@@ -9,6 +9,18 @@ import numpy as np
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+def normalize_tensor(X: torch.Tensor | np.ndarray) -> torch.Tensor:
+    # Normalize
+    if isinstance(X, np.ndarray):
+        X = torch.from_numpy(X)
+
+    mean = X.mean(dim=(0, 2)).view(1, -1, 1)  # shape (1xFx1)
+    std = X.std(dim=(0, 2), unbiased=False).view(1, -1, 1) + 1e-8  # shape (1xFx1)
+    X = (X - mean) / (std + 1e-14)
+
+    return X
+
+
 def evaulate_model(y_pred, y_true, target_gestures_encoded, encoder: LabelEncoder):
     if isinstance(y_pred, torch.Tensor):
         y_pred = y_pred.detach().cpu().numpy()
@@ -58,8 +70,26 @@ def evaulate_model(y_pred, y_true, target_gestures_encoded, encoder: LabelEncode
         "competition_evaluation": competition_evaluation,
     }
 
+def evaluate_fold(model, X, y, target_gestures_encoded, encoder, feature_mask=None):
+    """Helper to evaluate model on data with optional feature masking"""
+    if feature_mask is not None:
+        X_masked = X.clone()
+        X_masked[:, feature_mask:, :] = -1
+        y_pred = torch.argmax(model(X_masked.to(device)), dim=1)
+    else:
+        y_pred = torch.argmax(model(X.to(device)), dim=1)
+    
+    return evaulate_model(y_pred.to(device), y.to(device), target_gestures_encoded, encoder)
 
-def train_model(model: nn.Module, dataloader: DataLoader, n_epochs: int, should_log=True, mixup_alpha=0.4, lr=5e-3, weight_decay=3e-3, n_classes=9):
+def store_results(results_dict, score_dashboard):
+    """Helper to store evaluation results"""
+    for key in ['f1_macro', 'f1_binary', 'competition_evaluation', 'confusion_matrix']:
+        if key not in results_dict:
+            results_dict[key] = []
+        results_dict[key].append(score_dashboard[key])
+
+
+def train_model(model: nn.Module, dataloader: DataLoader, n_epochs: int, should_log=True, lr=5e-3, weight_decay=3e-3):
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     # Add learning rate scheduler - reduces LR when loss plateaus
@@ -75,23 +105,8 @@ def train_model(model: nn.Module, dataloader: DataLoader, n_epochs: int, should_
             x = x.to(device)
             y = y.to(device)
 
-            lam = np.random.beta(mixup_alpha, mixup_alpha)
-            # ---- MIXUP IMPLEMENTATION ----
-            batch_size = x.shape[0]
-            shuffled_indices = torch.randperm(batch_size)
-
-            x_batch_b = x[shuffled_indices]
-            y_batch_b = y[shuffled_indices]
-
-            mixed_x = lam * x + (1 - lam) * x_batch_b
-            y_one_hot = nn.functional.one_hot(y, num_classes=n_classes).float()
-            y_b_one_hot = nn.functional.one_hot(y_batch_b, num_classes=n_classes).float()
-            mixed_y = lam * y_one_hot + (1 - lam) * y_b_one_hot
-
-            # ---- MIXUP ENDS ----
-
-            y_pred = model(mixed_x)
-            loss = criterion(y_pred, mixed_y)
+            y_pred = model(x)
+            loss = criterion(y_pred, y)
             loss_avg += loss.item()
 
             opt.zero_grad()

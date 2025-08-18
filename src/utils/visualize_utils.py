@@ -6,6 +6,7 @@ from typing import Any
 
 
 def plot_cm(cm: np.ndarray, classes: list[str]) -> None:
+    plt.figure(figsize=(13, 13))
     sns.heatmap(cm, annot=True, fmt=".2f", xticklabels=classes, yticklabels=classes)
     plt.xlabel("Predicted Label")
     plt.ylabel("True Label")
