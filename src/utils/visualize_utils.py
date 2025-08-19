@@ -5,9 +5,10 @@ import pandas as pd
 from typing import Any
 
 
-def plot_cm(cm: np.ndarray, classes: list[str]) -> None:
-    plt.figure(figsize=(13, 13))
-    sns.heatmap(cm, annot=True, fmt=".2f", xticklabels=classes, yticklabels=classes)
+def plot_cm(cm: np.ndarray, classes: np.ndarray, target_gestures_encoded: np.ndarray) -> None:
+    plt.figure(figsize=(10, 10))
+    classes = np.array(classes)
+    sns.heatmap(cm, annot=True, fmt=".2f", xticklabels=classes[target_gestures_encoded], yticklabels=classes[target_gestures_encoded]) # type: ignore
     plt.xlabel("Predicted Label")
     plt.ylabel("True Label")
     plt.xticks(rotation=80)

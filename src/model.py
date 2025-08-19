@@ -169,6 +169,82 @@ class FullModel(nn.Module):
         )
 
 
+# class MiniModel(nn.Module):
+#     def __init__(self, in_channels, n_imu_channels, n_classes):
+#         super().__init__()
+
+#         self.in_channels = in_channels
+#         self.n_imu_channels = n_imu_channels
+#         cnn_out_size = 48 + 25
+
+#         self.gaussian_layer = GaussianNoise(stddev=0.09)
+
+#         self.imu_branch = nn.Sequential(
+#             ReSEBlock(n_imu_channels, 32, stride=2),
+#             ReSEBlock(32, 48, stride=2),
+#         )
+
+#         self.non_imu_branch = nn.Sequential(
+#             ReSEBlock(in_channels - n_imu_channels, 20, stride=2),
+#             ReSEBlock(20, 25, stride=2),
+#         )
+
+#         self.lstm_layer = LSTMBlock(cnn_out_size, hidden_dim=cnn_out_size, layer_dim=1)  # 64 + 64 // 2
+#         self.gru_layer = GRUBlock(cnn_out_size, hidden_dim=cnn_out_size, layer_dim=1)
+
+#         self.temporal_attention = nn.Sequential(
+#             AttentionBlock(in_channels=4 * cnn_out_size),
+#         )
+
+#         self.shortcut_branch = nn.Sequential(
+#             GaussianNoise(stddev=0.09),
+#             nn.AdaptiveAvgPool1d(1),
+#             nn.Flatten(),
+#             nn.Linear(cnn_out_size, 16),
+#             nn.ELU(),
+#         )
+
+#         self.fc = nn.Sequential(
+#             nn.Linear(4 * cnn_out_size + 16, 256),  # Match author's layers
+#             nn.BatchNorm1d(256),
+#             nn.ReLU(),
+#             nn.Dropout(0.5),
+#             nn.Linear(256, 128),
+#             nn.BatchNorm1d(128),
+#             nn.ReLU(),
+#             nn.Dropout(0.3),
+#             nn.Linear(128, n_classes),
+#         )
+
+#     def forward(self, x: torch.Tensor):
+#         """
+#         X shape: N x n_features x time_steps
+#         """
+#         x_imu = x[:, : self.n_imu_channels, :]
+#         x_non_imu = x[:, self.n_imu_channels :, :]
+
+#         x_imu = self.gaussian_layer(x_imu)
+#         if not torch.allclose(x_non_imu, torch.tensor(-1.0)):
+#             x_non_imu = self.gaussian_layer(x_non_imu)
+
+#         out_imu_cnn: torch.Tensor = self.imu_branch(x_imu)  # B x F_imu x (T // n)
+#         out_non_imu_cnn: torch.Tensor = self.non_imu_branch(x_non_imu)  # B x F - F_imu x (T // n)
+#         out_cnn = torch.cat([out_imu_cnn, out_non_imu_cnn], dim=1)  # B x F X new_T
+
+#         out_recurrent = out_cnn.transpose(2, 1)  # B x (T // n) x F
+#         out_lstm = self.lstm_layer(out_recurrent)  # B x (T // n) x (hidden_dim * 2)
+#         out_gru = self.gru_layer(out_recurrent)  # B x T_cnn_out x (hidden_dim * 2)
+#         out_recurrent = torch.cat([out_lstm, out_gru], dim=2)  # B x T x F
+#         out_recurrent = self.temporal_attention(out_recurrent)  # B x F
+
+#         out_shortcut = self.shortcut_branch(out_cnn)  # B x 16
+#         out = torch.cat([out_recurrent, out_shortcut], dim=1)
+
+#         y_pred = self.fc(out)
+
+#         return y_pred
+
+
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
