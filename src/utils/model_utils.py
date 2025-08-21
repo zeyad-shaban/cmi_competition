@@ -46,18 +46,6 @@ class SoftF1Loss(nn.Module):
         return 1 - f1_macro  # we minimize, so return 1 - F1
 
 
-def normalize_tensor(X: torch.Tensor | np.ndarray) -> torch.Tensor:
-    # Normalize
-    if isinstance(X, np.ndarray):
-        X = torch.from_numpy(X)
-
-    mean = X.mean(dim=(0, 2)).view(1, -1, 1)  # shape (1xFx1)
-    std = X.std(dim=(0, 2), unbiased=False).view(1, -1, 1) + 1e-8  # shape (1xFx1)
-    X = (X - mean) / (std + 1e-14)
-
-    return X
-
-
 def evaluate_model(y_pred, y_true, target_gestures_encoded, encoder: LabelEncoder):
     if isinstance(y_pred, torch.Tensor):
         y_pred = y_pred.detach().cpu().numpy()
